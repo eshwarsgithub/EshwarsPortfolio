@@ -37,7 +37,7 @@ export default function LivingFace({ avatar, alt, className = '', hoverSelector 
   return (
     <div ref={wrap} className={`face-wrap ${className}`}>
       <div className="face-inner">
-        <img ref={fallback} className="face-fallback" src={urls.g_s ?? urls.rest ?? avatar} alt={alt} draggable={false} />
+        <img ref={fallback} className="face-fallback" src={urls.closed ?? urls.rest ?? avatar} alt={alt} draggable={false} />
         <canvas ref={canvas} className="face-gl" aria-hidden="true" />
         <div className="face-props" aria-hidden="true">
           <svg ref={fly} className="face-fly" viewBox="0 0 32 32">

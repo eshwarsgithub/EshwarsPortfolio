@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 import SplitText from '@/components/SplitText'
 import LivingFace from '@/components/face/LivingFace'
-import DitherTrail from '@/components/dither/DitherTrail'
-import DitherScene from '@/components/dither/DitherScene'
 import avatar from '@/assets/avatar.png'
 import { credentials, experience, filters, process, profile, projects, skills, socials, ticker } from '@/data'
 import './portfolio.css'
@@ -92,7 +90,6 @@ export default function App() {
         } as React.CSSProperties
       }
     >
-      <DitherTrail />
       <nav className="nav" aria-label="Primary">
         <div className="wrap">
           <a
@@ -197,7 +194,6 @@ export default function App() {
       </main>
 
       <div className="night">
-        <DitherScene />
         <main className="wrap">
           <section id="work">
             <div className="sec">
