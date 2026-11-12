@@ -22,21 +22,26 @@ const LAYOUT = {
   headC: [0.52, 0.5],
   headR: [0.3, 0.3],
   // eye openings: [centre u, centre v, half-width, half-height]
-  eyeL: [0.378, 0.4235, 0.07, 0.0205],
-  eyeR: [0.658, 0.421, 0.07, 0.0205],
+  eyeL: [0.378, 0.4235, 0.07, 0.027],
+  eyeR: [0.658, 0.421, 0.07, 0.027],
   spot: { nose: [0.52, 0.53], brow: [0.52, 0.36], cheekR: [0.68, 0.56], cheekL: [0.36, 0.56], mouth: [0.52, 0.62] },
 }
 
-// Gaze stills and where their irises sit relative to the resting picture, in source pixels (+x image-right, +y down).
+// Gaze stills and where their pupils sit relative to the resting picture, in source pixels (+x image-right, +y down),
+// measured from the stills themselves. The resting picture looks slightly UP; STRAIGHT is where the pupils sit when
+// he looks at the viewer, which is how the original avatar.png looks (measured: pupils ~14 px below the resting still).
 const GAZE = {
   rest: [0, 0],
-  g_r1: [16, 4], g_r2: [20, 0], g_r3: [27, 6], g_r4: [31, 5],
-  g_dr1: [15, 12], g_dr2: [29, 17], g_dr3: [24, 19],
-  g_l2: [-33, 10], g_dl1: [-14, 14],
-  g_d1: [-3, 12], g_d2: [6, 27],
+  g_s: [15, 12], // looks almost straight at the viewer, natural smile: the picture he starts on
+  g_r1: [11, 6], g_r2: [16, 0], g_r3: [51, 10], g_r4: [41, 14],
+  g_dr1: [21, 42], g_dr2: [56, 31], g_dr3: [43, 47],
+  g_l2: [-25, 29], g_dl1: [-5, 43],
+  g_d1: [4, 42], g_d2: [0, 48],
 }
-const REACH = { x: 33, down: 27, up: 6 } // how far the eyes can travel, source px
-const WARP = { x: 17, y: 7 } // the most the iris may be slid on top of a still, source px
+const STRAIGHT = [3, 14]
+const REACH = { left: 24, right: 50, down: 34, up: 14 } // how far the eyes travel from STRAIGHT, source px
+const WARP = { x: 16, y: 5 } // the most the iris may be slid on top of a still, source px
+const QUIET = 5000 // ms without input after which he holds still (no blinks)
 const FALLOFF = 900 // cursor distance (source px) at which the eyes are ~3/4 of the way over
 // open-eyed, forward-looking expressions whose eyes may keep following the cursor
 const FOLLOWS = new Set(['grin', 'fish', 'whistle1', 'whistle2', 'raised', 'gum1', 'gum2', 'sick'])
@@ -49,7 +54,6 @@ const WOBBLE = 2.3 * 2 * Math.PI, REACHN = 0.085 / SPAN, C = REACHN * WOBBLE, GA
 export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, hoverSelector }) {
   const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: true })
   if (!gl) { fallback.src = restUrl; return () => {} } // no WebGL: a plain, open-eyed picture
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
   const cleanups = []
   const on = (target, type, fn, opts) => {
     target.addEventListener(type, fn, opts)
@@ -64,7 +68,7 @@ export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, ho
     uniform sampler2D faceA, faceB; uniform float fade;
     uniform vec2 gazeA, gazeB; uniform vec4 eyeL, eyeR;
     // 1 inside an eye opening, fading to 0 at its rim, so only the iris and white move and the lids stay put
-    float eyeMask(vec2 uv, vec4 e){ return 1. - smoothstep(.62, 1., length((uv - e.xy) / e.zw)); }
+    float eyeMask(vec2 uv, vec4 e){ return 1. - smoothstep(.8, 1., length((uv - e.xy) / e.zw)); }
     void main(){
       if(vUv.x<0.||vUv.y<0.||vUv.x>1.||vUv.y>1.){ gl_FragColor = vec4(0.); return; }
       float m = max(eyeMask(vUv, eyeL), eyeMask(vUv, eyeR));
@@ -184,9 +188,8 @@ export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, ho
     wow: [['stars', 130, 1000], ['grin', 140, 640]],
     fly: 'fly', tug: 'tug',
   }
-  const ROTATION = ['yawn', 'shifty', 'gum', 'fly', 'flirt', 'sneeze', 'tug', 'whistle', 'doze', 'wow']
   const ZONES = {
-    hover: { mouth: 'kiss' },
+    hover: {},
     tap: { brow: 'raised', eyeL: 'ouch', eyeR: 'ouch', nose: 'act:sneeze', mouth: 'whistle2', cheek: 'fish', chin: 'grin', hair: 'stars' },
   }
   const zoneAt = (u, v) => {
@@ -201,15 +204,15 @@ export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, ho
   }
 
   // state
-  let ready = false, tStart = 0, last = performance.now()
+  let ready = false, last = performance.now()
   let pu = 0.5, pv = 0.5, onHead = false, zone = null, zoneSince = 0
-  let lastInput = -1e9, awake = false, pressed = false, downAt = 0, downU = 0, downV = 0, lastX = 0, lastY = 0, speed = 0, shake = 0
+  let lastInput = -1e9, awake = true, moved = false, pressed = false, downAt = 0, downU = 0, downV = 0, lastX = 0, lastY = 0, speed = 0, shake = 0
   let moodFace = null, moodUntil = 0, pulls = [], lookAt = null
-  let act = null, actI = 0, actT = 0, rotation = [], nextIdle = 30000
-  let faceA = 'rest', faceB = 'rest', fadeT = 0, fadeMs = 1
+  let act = null, actI = 0, actT = 0
+  let faceA = urls.g_s ? 'g_s' : 'rest', faceB = faceA, fadeT = 0, fadeMs = 1
   let logical = 'rest', logicalMs = 70
-  let lids = 'closed', lidsMs = 40 // 'open' | 'half' | 'closed'
-  let gazePic = 'rest', gazeSwapT = 0, gzX = 0, gzY = 0 // current gaze still and the smoothed eye offset (source px)
+  let lids = 'open', lidsMs = 40 // 'open' | 'half' | 'closed'
+  let gazePic = urls.g_s ? 'g_s' : 'rest', gazeSwapT = 0, gzX = STRAIGHT[0], gzY = STRAIGHT[1] // current gaze still and the smoothed eye offset (source px)
   let nextBlink = 0, blinkStep = -1, blinkT = 0, wakeUntil = 0
   let leanX = 0, leanY = 0, lvX = 0, lvY = 0, wantLean = [0, 0]
   const pullNow = [0, 0]
@@ -235,9 +238,8 @@ export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, ho
     let rx = 0, ry = 0
     const g = GAZE[name]
     if (g) { rx = gzX - g[0]; ry = gzY - g[1] }
-    else if (FOLLOWS.has(name)) { rx = gzX * 0.8; ry = gzY * 0.8 }
-    const k = Math.hypot(rx / WARP.x, ry / WARP.y)
-    if (k > 1) { rx /= k; ry /= k }
+    else if (FOLLOWS.has(name)) { rx = (gzX - STRAIGHT[0]) * 0.8; ry = (gzY - STRAIGHT[1]) * 0.8 } // these already look straight ahead
+    rx = Math.max(-WARP.x, Math.min(WARP.x, rx)); ry = Math.max(-WARP.y, Math.min(WARP.y, ry)) // per axis, so a big vertical gap never shrinks the sideways glide
     slide[0] = rx / SRC_W; slide[1] = ry / SRC_H
     return slide
   }
@@ -292,9 +294,8 @@ export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, ho
   const toUv = (x, y) => { const r = canvas.getBoundingClientRect(); return [((x - r.left) / r.width - 0.5) * OVER + 0.5, ((y - r.top) / r.height - 0.5) * OVER + 0.5] }
   const solid = (u, v) => alphaMap && u >= 0 && v >= 0 && u < 1 && v < 1 && alphaMap[((v * 128 | 0) * 128 + (u * 128 | 0)) * 4 + 3] > 40
   function wake(now) {
+    if (now - lastInput > QUIET) nextBlink = now + 1200 + Math.random() * 2400 // coming back after a pause: no instant blink
     lastInput = now
-    if (!awake) { awake = true; nextBlink = now + 1600; wakeUntil = now + 120; setLids('half', 90) } // closed -> half -> open
-    nextIdle = 30000 + Math.random() * 15000
   }
 
   on(window, 'pointermove', e => {
@@ -302,7 +303,7 @@ export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, ho
     const dx = e.clientX - lastX, dy = e.clientY - lastY; lastX = e.clientX; lastY = e.clientY
     ;[pu, pv] = toUv(e.clientX, e.clientY)
     speed += Math.hypot(dx, dy) * 0.004
-    wake(now)
+    moved = true; wake(now)
     if (act && !pressed && act !== ACTS.doze) endAct(); else if (act === ACTS.doze) { actI = act.length - 2; advance(now) }
     onHead = solid(pu, pv)
     const z = onHead ? zoneAt(pu, pv) : null
@@ -343,8 +344,6 @@ export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, ho
     on(b, 'pointerenter', () => { moodFace = 'hearts'; moodUntil = performance.now() + 1e7 })
     on(b, 'pointerleave', () => { moodFace = 'grin'; moodUntil = performance.now() + 700 })
   })
-  // touch screens have no cursor to wake him, so he opens his eyes on his own
-  if (matchMedia('(hover: none)').matches) timers.push(setTimeout(() => wake(performance.now()), 1400))
   on(window, 'scroll', () => { const n = performance.now(); if (Math.abs(scrollY - lastScroll) > 2) { scrollUntil = n + 450; lastScroll = scrollY } wake(n) }, { passive: true })
 
   const io = new IntersectionObserver(es => { visible = es[0].isIntersecting }, { threshold: 0 }); io.observe(canvas)
@@ -361,13 +360,8 @@ export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, ho
 
     speed *= Math.exp(-dt * 6); shake += ((speed > 1.5 ? 1 : 0) - shake) * f(speed > 1.5 ? 1.2 : 0.9)
 
-    // acts when the page goes quiet
+    // acts only ever start from the visitor (a tap); nothing plays on its own
     if (act) { if (now - actT > act[actI][2]) advance(now) }
-    else if (!reduced && !pressed && tStart && now - Math.max(lastInput, tStart) > nextIdle) {
-      if (!rotation.length) rotation = [...ROTATION]
-      startAct(rotation.shift(), now); lastInput = now; nextIdle = 30000 + Math.random() * 15000
-      if (!awake) wake(now)
-    }
 
     // moving props
     const mk = Math.min(1, (now - moveT) / moveMs), me = mk * mk * (3 - 2 * mk)
@@ -390,16 +384,16 @@ export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, ho
     if (want) setFace(want, want === 'rest' ? 110 : 90)
 
     // where the eyes should point (source px), eased so they glide rather than snap
-    let gx = 0, gy = 0
-    if (awake) {
+    let gx = STRAIGHT[0], gy = STRAIGHT[1] // first view: looking straight at the visitor
+    if (moved || wantLook || lookAt || now < scrollUntil) {
       if (wantLook) { gx = wantLook[0]; gy = wantLook[1] }
-      else if (now < scrollUntil && !lookAt) { gx = 0; gy = REACH.down }
+      else if (now < scrollUntil && !lookAt) { gx = STRAIGHT[0]; gy = STRAIGHT[1] + REACH.down }
       else {
         let dx, dy
         if (lookAt) { const p = lookAt(); dx = (p[0] - LAYOUT.cx) * SRC_W; dy = (p[1] - LAYOUT.eyeV) * SRC_H }
         else { dx = (pu - LAYOUT.cx) * SRC_W; dy = (pv - LAYOUT.eyeV) * SRC_H }
         const hyp = Math.hypot(dx, dy)
-        if (hyp > 1) { const t = Math.tanh(hyp / FALLOFF) / hyp; gx = dx * t * REACH.x; gy = dy * t * (dy > 0 ? REACH.down : REACH.up) }
+        if (hyp > 1) { const t = Math.tanh(hyp / FALLOFF) / hyp; gx = STRAIGHT[0] + dx * t * (dx < 0 ? REACH.left : REACH.right); gy = STRAIGHT[1] + dy * t * (dy > 0 ? REACH.down : REACH.up) }
       }
     }
     const ease = f(wantLook ? 22 : 14)
@@ -425,7 +419,7 @@ export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, ho
         if (s !== blinkStep) { blinkStep = s; if (s === 1) setLids('closed', 20); else if (s === 2) setLids('half', 20); else if (s >= 3) { setLids('open', 30); blinkStep = -1 } }
       } else {
         if (lids !== 'open' && now > wakeUntil) setLids('open', 100)
-        if (now > nextBlink) { blinkStep = 0; blinkT = now; setLids('half', 20); nextBlink = now + 2200 + Math.random() * 3400 }
+        if (now > nextBlink && now - lastInput < QUIET) { blinkStep = 0; blinkT = now; setLids('half', 20); nextBlink = now + 2200 + Math.random() * 3400 }
       }
     } else { blinkStep = -1; if (awake) lids = 'open' }
 
@@ -433,10 +427,10 @@ export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, ho
     let s = slideFor(faceA); gl.uniform2f(U.gazeA, s[0], s[1])
     s = slideFor(faceB); gl.uniform2f(U.gazeB, s[0], s[1])
 
-    // the head leans toward the pull, the cursor, the scroll, and whatever the act asks
+    // the head leans toward the pull, the cursor, the scroll, and whatever the act asks; left alone it is still
     const scrolling = now < scrollUntil ? 0.006 : 0
-    const tx = (pressed || handHeld ? (brush ? brush.px * 0.16 : 0) : awake ? Math.max(-1.2, Math.min(1.2, pu - 0.5)) * 0.012 : 0) + wantLean[0] + Math.sin(now * 0.0009) * 0.0015
-    const ty = (pressed || handHeld ? (brush ? brush.py * 0.16 : 0) : awake ? Math.max(-1.2, Math.min(1.2, pv - 0.46)) * 0.008 : 0) + wantLean[1] + scrolling + Math.sin(now * 0.0013) * 0.0022
+    const tx = (pressed || handHeld ? (brush ? brush.px * 0.16 : 0) : moved ? Math.max(-1.2, Math.min(1.2, pu - 0.5)) * 0.012 : 0) + wantLean[0]
+    const ty = (pressed || handHeld ? (brush ? brush.py * 0.16 : 0) : moved ? Math.max(-1.2, Math.min(1.2, pv - 0.46)) * 0.008 : 0) + wantLean[1] + scrolling
     lvX += ((tx - leanX) * 70 - lvX * 8) * dt; lvY += ((ty - leanY) * 70 - lvY * 8) * dt
     leanX += lvX * dt; leanY += lvY * dt
 
@@ -473,14 +467,13 @@ export function mountFace({ wrap, canvas, fly, hand, fallback, restUrl, urls, ho
     if (!base || dead) return
     upload('rest', base); hitMap(base)
     const take = async n => { const img = await load(n); if (img && !dead) upload(n, img) }
-    await take('closed') // he starts asleep, so this must be there before the first frame
+    if (urls.g_s) await take('g_s')
     if (dead) return
-    if (tex.closed) { faceA = faceB = 'closed' } else { lids = 'open'; awake = true }
     fallback.style.visibility = 'hidden'
-    ready = true; tStart = performance.now(); raf = requestAnimationFrame(frame)
-    await take('half')
+    ready = true; raf = requestAnimationFrame(frame)
+    await take('closed'); await take('half')
     // gaze stills next (they matter most), then the expressions
-    const names = Object.keys(urls).filter(n => !['rest', 'closed', 'half'].includes(n)).sort((a, b) => (GAZE[b] ? 1 : 0) - (GAZE[a] ? 1 : 0))
+    const names = Object.keys(urls).filter(n => !['rest', 'g_s', 'closed', 'half'].includes(n)).sort((a, b) => (GAZE[b] ? 1 : 0) - (GAZE[a] ? 1 : 0))
     let i = 0
     await Promise.all(Array.from({ length: 4 }, async () => { while (i < names.length && !dead) await take(names[i++]) }))
   })()
