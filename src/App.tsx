@@ -207,6 +207,7 @@ export default function App() {
               <div className="fu fu2" style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                 <a className="btn p" href="#work">View work</a>
                 <a className="btn s" href={`mailto:${profile.email}`}>Email me</a>
+                <a className="btn s" href="/Vemula_Eshwar_Resume.pdf" target="_blank" rel="noopener noreferrer">Resume</a>
               </div>
             </div>
           </div>
@@ -465,7 +466,13 @@ export default function App() {
           </div>
 
           <footer className="in" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px 24px', minHeight: 72 }}>
-            <p className="mono m">© 2026 Vemula Eshwar</p>
+            <p className="mono m" style={{ display: 'inline-flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <span>© 2026 Vemula Eshwar</span>
+              <span style={{ display: 'inline-flex', gap: 12 }}>
+                <a className="lk" href="/Vemula_Eshwar_Resume.pdf" target="_blank" rel="noopener noreferrer" aria-label="View resume (PDF, opens in a new tab)" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }}>Resume ↗</a>
+                <a className="lk" href="/Vemula_Eshwar_Resume.pdf" download="Vemula_Eshwar_Resume.pdf" aria-label="Download resume (PDF)" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }}>Download ↓</a>
+              </span>
+            </p>
             <div className="fs" role="group" aria-label="Typeface">
               <button className={fb('Pixel')} onClick={pickPixel} aria-pressed={family === 'Pixel'} aria-label={`Geist Pixel, ${variant}. Click again to change pixel style`} title={`Geist Pixel: ${variant}`}>
                 <svg viewBox="0 0 22 22" fill="currentColor" aria-hidden="true">
