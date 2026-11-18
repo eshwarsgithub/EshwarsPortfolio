@@ -177,9 +177,24 @@ export const credentials = [
 ]
 
 export const socials = [
-  ['LinkedIn', 'https://linkedin.com/in/vemula-eshwar'],
+  ['LinkedIn', 'https://www.linkedin.com/in/vemula-eshwar/'],
   ['GitHub', 'https://github.com/eshwarsgithub'],
+  ['X', 'https://x.com/Eshwar3275188'],
+  ['Discord', 'https://discord.com/users/962756732872982639'],
 ]
+
+// Icons in the scrolling strip above the footer. An entry with an empty address still scrolls past,
+// but is not clickable.
+export const footerLinks: { name: 'LinkedIn' | 'X' | 'Discord' | 'GitHub' | 'Mail'; href: string }[] = [
+  { name: 'GitHub', href: 'https://github.com/eshwarsgithub' },
+  { name: 'LinkedIn', href: 'https://www.linkedin.com/in/vemula-eshwar/' },
+  { name: 'X', href: 'https://x.com/Eshwar3275188' },
+  { name: 'Discord', href: 'https://discord.com/users/962756732872982639' },
+  { name: 'Mail', href: 'mailto:eshwarvemula009@gmail.com' },
+]
+
+// Published Unicorn Studio scene (not shown at the moment; the icon strip replaced it) ("Scroll Gallery" remix, with the handles strip).
+export const footerSceneId = '0poni69e8WthycnQL1W0'
 
 export const process = [
   { name: 'Idea', text: 'Start from a real problem: a school that needs an AI tutor, a team drowning in support email.' },
